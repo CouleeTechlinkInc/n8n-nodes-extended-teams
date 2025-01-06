@@ -4,7 +4,7 @@
   "description": "Custom n8n nodes for extended-teams",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node copyfiles.js",
     "dev": "tsc --watch",
     "format": "prettier nodes credentials --write",
     "lint": "eslint nodes credentials package.json",

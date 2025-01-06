@@ -133,7 +133,19 @@ export class TeamsFileUpload implements INodeType {
 				const uploadSession = await microsoftApiRequest.call(
 					this,
 					'POST',
-					`/v1.0/chats/${chatId}/messages/${fileName}/attachments/createUploadSession`,
+					`/v1.0/chats/${chatId}/messages`,
+					{
+						body: {
+							content: message || fileName,
+						},
+					},
+				);
+
+				// Step 2: Create upload session for attachment
+				const attachmentSession = await microsoftApiRequest.call(
+					this,
+					'POST',
+					`/v1.0/chats/${chatId}/messages/${uploadSession.id}/attachments/createUploadSession`,
 					{
 						AttachmentItem: {
 							attachmentType: 'file',
@@ -143,49 +155,29 @@ export class TeamsFileUpload implements INodeType {
 					},
 				);
 
-				if (!uploadSession || !uploadSession.uploadUrl) {
+				if (!attachmentSession || !attachmentSession.uploadUrl) {
 					throw new Error('Failed to create upload session');
 				}
 
-				// Step 2: Upload the file using direct PUT request since it's binary data
+				// Step 3: Upload the file using direct PUT request
 				const uploadResponse = await this.helpers.requestOAuth2.call(
 					this,
 					'microsoftTeamsOAuth2Api',
 					{
 						method: 'PUT',
-						uri: uploadSession.uploadUrl,
+						uri: attachmentSession.uploadUrl,
 						headers: {
 							'Content-Length': fileBuffer.length,
 						},
 						body: fileBuffer,
-						json: false,
-					},
-				);
-
-				// Step 3: Send the message with the file reference
-				const messageResponse = await microsoftApiRequest.call(
-					this,
-					'POST',
-					`/v1.0/chats/${chatId}/messages`,
-					{
-						body: {
-							content: message || fileName,
-						},
-						attachments: [
-							{
-								id: uploadSession.id,
-								contentType: 'reference',
-								contentUrl: uploadResponse.resourceUrl,
-								name: fileName,
-							},
-						],
+							json: false,
 					},
 				);
 
 				returnData.push({
 					json: {
 						success: true,
-						messageId: messageResponse.id,
+						messageId: uploadSession.id,
 						fileName,
 						uploadResponse,
 					},
