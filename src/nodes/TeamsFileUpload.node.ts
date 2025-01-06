@@ -127,25 +127,44 @@ export class TeamsFileUpload implements INodeType {
 				}
 
 				const fileName = binaryData.fileName || 'file';
-				const fileBuffer = Buffer.from(binaryData.data, 'base64');
-				const attachmentId = new Date().getTime().toString();
 
-				// Create upload session
-				const uploadSession = await microsoftApiRequest.call(
+				// Step 1: Create hosted content
+				const hostedContent = await microsoftApiRequest.call(
+					this,
+					'POST',
+					`/v1.0/chats/${chatId}/messages/hostedContents`,
+					{
+						chatMessage: {
+							body: {
+								contentType: 'html',
+								content: `${message ? message + '<br/>' : ''}Uploading file: ${fileName}`,
+							},
+						},
+						hostedContents: [
+							{
+								'@microsoft.graph.temporaryId': '1',
+								contentBytes: binaryData.data,
+								contentType: binaryData.mimeType || 'application/octet-stream',
+							},
+						],
+					},
+				);
+
+				// Step 2: Send message with hosted content reference
+				const messageResponse = await microsoftApiRequest.call(
 					this,
 					'POST',
 					`/v1.0/chats/${chatId}/messages`,
 					{
 						body: {
-							content: `${message ? message + '\n\n' : ''}<attachment id="${attachmentId}"></attachment>`,
+							contentType: 'html',
+							content: `${message ? message + '<br/>' : ''}<div><attachment id="file_${hostedContent.id}"></attachment></div>`,
 						},
-						attachments: [
+						hostedContents: [
 							{
-								id: attachmentId,
+								'@microsoft.graph.temporaryId': 'file_' + hostedContent.id,
+								contentBytes: binaryData.data,
 								contentType: binaryData.mimeType || 'application/octet-stream',
-								contentUrl: '',
-								name: fileName,
-								content: binaryData.data,
 							},
 						],
 					},
@@ -154,8 +173,9 @@ export class TeamsFileUpload implements INodeType {
 				returnData.push({
 					json: {
 						success: true,
-						messageId: uploadSession.id,
+						messageId: messageResponse.id,
 						fileName,
+						hostedContentId: hostedContent.id,
 					},
 				});
 			} catch (error: any) {
