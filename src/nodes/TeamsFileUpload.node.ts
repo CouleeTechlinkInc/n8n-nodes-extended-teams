@@ -127,65 +127,27 @@ export class TeamsFileUpload implements INodeType {
 				}
 
 				const fileName = binaryData.fileName || 'file';
-				const fileBuffer = Buffer.from(binaryData.data, 'base64');
+				const isImage = binaryData.mimeType?.startsWith('image/');
 
-				// Step 1: Create message with placeholder
+				// Create message with hosted content
 				const messageResponse = await microsoftApiRequest.call(
 					this,
 					'POST',
 					`/v1.0/chats/${chatId}/messages`,
 					{
 						body: {
-							content: message || `Uploading file: ${fileName}`,
-						},
-					},
-				);
-
-				// Step 2: Create upload session for the file
-				const uploadSession = await microsoftApiRequest.call(
-					this,
-					'POST',
-					`/v1.0/chats/${chatId}/messages/${messageResponse.id}/hostedContents`,
-					{
-						contentType: binaryData.mimeType || 'application/octet-stream',
-						size: fileBuffer.length,
-						name: fileName,
-					},
-				);
-
-				if (!uploadSession || !uploadSession.uploadUrl) {
-					throw new Error('Failed to create upload session');
-				}
-
-				// Step 3: Upload the file content
-				const uploadResponse = await this.helpers.requestOAuth2.call(
-					this,
-					'microsoftTeamsOAuth2Api',
-					{
-						method: 'PUT',
-						uri: uploadSession.uploadUrl,
-						headers: {
-							'Content-Length': fileBuffer.length,
-							'Content-Range': `bytes 0-${fileBuffer.length - 1}/${fileBuffer.length}`,
-						},
-						body: fileBuffer,
-						json: false,
-					},
-				);
-
-				// Step 4: Update the message with the file reference
-				await microsoftApiRequest.call(
-					this,
-					'PATCH',
-					`/v1.0/chats/${chatId}/messages/${messageResponse.id}`,
-					{
-						body: {
-							content: message || `File uploaded: ${fileName}`,
+							contentType: 'html',
+							content: `<div>${message ? `<div>${message}</div>` : ''}<div>${
+								isImage 
+									? `<img src="../hostedContents/1/$value" style="max-width:100%">`
+									: `<attachment id="1"></attachment>`
+							}</div></div>`,
 						},
 						hostedContents: [
 							{
-								'@microsoft.graph.temporaryId': uploadSession.id,
+								'@microsoft.graph.temporaryId': '1',
 								contentBytes: binaryData.data,
+								contentType: binaryData.mimeType || 'application/octet-stream',
 							},
 						],
 					},
