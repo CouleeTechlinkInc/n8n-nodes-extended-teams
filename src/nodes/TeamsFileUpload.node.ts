@@ -129,31 +129,29 @@ export class TeamsFileUpload implements INodeType {
 				const fileName = binaryData.fileName || 'file';
 				const fileBuffer = Buffer.from(binaryData.data, 'base64');
 
-				// Step 1: Create upload session for the file
-				const fileUploadSession = await microsoftApiRequest.call(
+				// Step 1: Create upload session in OneDrive
+				const uploadSession = await microsoftApiRequest.call(
 					this,
 					'POST',
-					`/v1.0/chats/${chatId}/attachments/createUploadSession`,
+					`/v1.0/users/me/drive/root:/${fileName}:/createUploadSession`,
 					{
-						AttachmentItem: {
-							attachmentType: 'file',
-							name: fileName,
-							size: fileBuffer.length,
+						item: {
+							"@microsoft.graph.conflictBehavior": "rename",
 						},
 					},
 				);
 
-				if (!fileUploadSession || !fileUploadSession.uploadUrl) {
+				if (!uploadSession || !uploadSession.uploadUrl) {
 					throw new Error('Failed to create upload session');
 				}
 
-				// Step 2: Upload the file content
-				await this.helpers.requestOAuth2.call(
+				// Step 2: Upload the file content to OneDrive
+				const uploadResponse = await this.helpers.requestOAuth2.call(
 					this,
 					'microsoftTeamsOAuth2Api',
 					{
 						method: 'PUT',
-						uri: fileUploadSession.uploadUrl,
+						uri: uploadSession.uploadUrl,
 						headers: {
 							'Content-Length': fileBuffer.length,
 							'Content-Range': `bytes 0-${fileBuffer.length - 1}/${fileBuffer.length}`,
@@ -162,6 +160,9 @@ export class TeamsFileUpload implements INodeType {
 						json: false,
 					},
 				);
+
+				// Parse the upload response
+				const fileInfo = JSON.parse(uploadResponse);
 
 				// Step 3: Create message with the uploaded file
 				const messageResponse = await microsoftApiRequest.call(
@@ -174,8 +175,9 @@ export class TeamsFileUpload implements INodeType {
 						},
 						attachments: [
 							{
-								id: fileUploadSession.id,
+								id: fileInfo.id,
 								contentType: binaryData.mimeType || 'application/octet-stream',
+								contentUrl: fileInfo.webUrl,
 								name: fileName,
 							},
 						],
@@ -187,17 +189,17 @@ export class TeamsFileUpload implements INodeType {
 						success: true,
 						messageId: messageResponse.id,
 						fileName,
-						attachmentId: fileUploadSession.id,
+						fileUrl: fileInfo.webUrl,
 					},
 				});
 			} catch (error: any) {
 				if (this.continueOnFail()) {
 					returnData.push({
-							json: {
-								success: false,
-								error: error.message || 'An error occurred while uploading the file',
-							},
-						});
+						json: {
+							success: false,
+							error: error.message || 'An error occurred while uploading the file',
+						},
+					});
 					continue;
 				}
 				throw new NodeApiError(this.getNode(), error as JsonObject);
