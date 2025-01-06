@@ -1,6 +1,6 @@
 {
   "name": "@couleetech/n8n-nodes-extended-teams",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "description": "Custom n8n nodes for extended-teams",
   "main": "dist/index.js",
   "scripts": {
