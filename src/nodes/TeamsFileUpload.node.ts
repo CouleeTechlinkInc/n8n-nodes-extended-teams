@@ -127,55 +127,59 @@ export class TeamsFileUpload implements INodeType {
 				}
 
 				const fileName = binaryData.fileName || 'file';
+				const fileBuffer = Buffer.from(binaryData.data, 'base64');
 
-				// Step 1: Create hosted content
-				const hostedContent = await microsoftApiRequest.call(
-					this,
-					'POST',
-					`/v1.0/chats/${chatId}/messages/hostedContents`,
-					{
-						chatMessage: {
-							body: {
-								contentType: 'html',
-								content: `${message ? message + '<br/>' : ''}Uploading file: ${fileName}`,
-							},
-						},
-						hostedContents: [
-							{
-								'@microsoft.graph.temporaryId': '1',
-								contentBytes: binaryData.data,
-								contentType: binaryData.mimeType || 'application/octet-stream',
-							},
-						],
-					},
-				);
-
-				// Step 2: Send message with hosted content reference
-				const messageResponse = await microsoftApiRequest.call(
+				// Step 1: Create upload session
+				const uploadSession = await microsoftApiRequest.call(
 					this,
 					'POST',
 					`/v1.0/chats/${chatId}/messages`,
 					{
 						body: {
-							contentType: 'html',
-							content: `${message ? message + '<br/>' : ''}<div><attachment id="file_${hostedContent.id}"></attachment></div>`,
+							content: message || `Uploading file: ${fileName}`,
 						},
-						hostedContents: [
-							{
-								'@microsoft.graph.temporaryId': 'file_' + hostedContent.id,
-								contentBytes: binaryData.data,
-								contentType: binaryData.mimeType || 'application/octet-stream',
-							},
-						],
+					},
+				);
+
+				// Step 2: Create upload session for the file
+				const fileUploadSession = await microsoftApiRequest.call(
+					this,
+					'POST',
+					`/v1.0/chats/${chatId}/messages/${uploadSession.id}/attachments/createUploadSession`,
+					{
+						AttachmentItem: {
+							attachmentType: 'file',
+							name: fileName,
+							size: fileBuffer.length,
+						},
+					},
+				);
+
+				if (!fileUploadSession || !fileUploadSession.uploadUrl) {
+					throw new Error('Failed to create upload session');
+				}
+
+				// Step 3: Upload the file content
+				await this.helpers.requestOAuth2.call(
+					this,
+					'microsoftTeamsOAuth2Api',
+					{
+						method: 'PUT',
+						uri: fileUploadSession.uploadUrl,
+						headers: {
+							'Content-Length': fileBuffer.length,
+							'Content-Range': `bytes 0-${fileBuffer.length - 1}/${fileBuffer.length}`,
+						},
+						body: fileBuffer,
+						json: false,
 					},
 				);
 
 				returnData.push({
 					json: {
 						success: true,
-						messageId: messageResponse.id,
+						messageId: uploadSession.id,
 						fileName,
-						hostedContentId: hostedContent.id,
 					},
 				});
 			} catch (error: any) {
