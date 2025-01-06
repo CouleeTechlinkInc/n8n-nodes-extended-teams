@@ -111,17 +111,17 @@ export class TeamsFileUpload implements INodeType {
 						uploadResponse,
 					},
 				});
-			} catch (error) {
+			} catch (error: any) {
 				if (this.continueOnFail()) {
 					returnData.push({
 						json: {
 							success: false,
-							error: error.message,
+							error: error.message || 'An error occurred while uploading the file',
 						},
 					});
 					continue;
 				}
-				throw new NodeOperationError(this.getNode(), error);
+				throw new NodeOperationError(this.getNode(), error.message || 'An error occurred while uploading the file');
 			}
 		}
 
