@@ -1,0 +1,50 @@
+{
+  "name": "@couleetech/n8n-nodes-extended-teams",
+  "version": "0.1.0",
+  "description": "Custom n8n nodes for extended-teams",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "format": "prettier nodes credentials --write",
+    "lint": "eslint nodes credentials package.json",
+    "lintfix": "eslint nodes credentials package.json --fix",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "n8n",
+    "n8n-community-node-package",
+    "n8n-node"
+  ],
+  "author": {
+    "name": "Tim Holum",
+    "email": "developer@coulee.tech"
+  },
+  "license": "MIT",
+  "homepage": "https://n8n.io",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CouleeTechlinkInc/n8n-nodes-extended-teams.git"
+  },
+  "files": [
+    "dist"
+  ],
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "credentials": [
+      "dist/credentials/*.credentials.js"
+    ],
+    "nodes": [
+      "dist/nodes/*.node.js"
+    ]
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "eslint": "^9.17.0",
+    "n8n-core": "^1.14.1",
+    "n8n-workflow": "^1.70.0",
+    "prettier": "^3.4.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.2"
+  }
+}
