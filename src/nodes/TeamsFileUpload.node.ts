@@ -129,15 +129,27 @@ export class TeamsFileUpload implements INodeType {
 				const fileName = binaryData.fileName || 'file';
 				const fileBuffer = Buffer.from(binaryData.data, 'base64');
 
-				// Step 1: Create upload session in OneDrive
+				// Step 1: Create message with placeholder
+				const messageResponse = await microsoftApiRequest.call(
+					this,
+					'POST',
+					`/v1.0/chats/${chatId}/messages`,
+					{
+						body: {
+							content: message || `Uploading file: ${fileName}`,
+						},
+					},
+				);
+
+				// Step 2: Create upload session for the file
 				const uploadSession = await microsoftApiRequest.call(
 					this,
 					'POST',
-					`/v1.0/users/me/drive/root:/${fileName}:/createUploadSession`,
+					`/v1.0/chats/${chatId}/messages/${messageResponse.id}/hostedContents`,
 					{
-						item: {
-							"@microsoft.graph.conflictBehavior": "rename",
-						},
+						contentType: binaryData.mimeType || 'application/octet-stream',
+						size: fileBuffer.length,
+						name: fileName,
 					},
 				);
 
@@ -145,7 +157,7 @@ export class TeamsFileUpload implements INodeType {
 					throw new Error('Failed to create upload session');
 				}
 
-				// Step 2: Upload the file content to OneDrive
+				// Step 3: Upload the file content
 				const uploadResponse = await this.helpers.requestOAuth2.call(
 					this,
 					'microsoftTeamsOAuth2Api',
@@ -161,24 +173,19 @@ export class TeamsFileUpload implements INodeType {
 					},
 				);
 
-				// Parse the upload response
-				const fileInfo = JSON.parse(uploadResponse);
-
-				// Step 3: Create message with the uploaded file
-				const messageResponse = await microsoftApiRequest.call(
+				// Step 4: Update the message with the file reference
+				await microsoftApiRequest.call(
 					this,
-					'POST',
-					`/v1.0/chats/${chatId}/messages`,
+					'PATCH',
+					`/v1.0/chats/${chatId}/messages/${messageResponse.id}`,
 					{
 						body: {
 							content: message || `File uploaded: ${fileName}`,
 						},
-						attachments: [
+						hostedContents: [
 							{
-								id: fileInfo.id,
-								contentType: binaryData.mimeType || 'application/octet-stream',
-								contentUrl: fileInfo.webUrl,
-								name: fileName,
+								'@microsoft.graph.temporaryId': uploadSession.id,
+								contentBytes: binaryData.data,
 							},
 						],
 					},
@@ -189,7 +196,6 @@ export class TeamsFileUpload implements INodeType {
 						success: true,
 						messageId: messageResponse.id,
 						fileName,
-						fileUrl: fileInfo.webUrl,
 					},
 				});
 			} catch (error: any) {
