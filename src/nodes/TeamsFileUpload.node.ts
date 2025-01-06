@@ -129,24 +129,23 @@ export class TeamsFileUpload implements INodeType {
 				const fileName = binaryData.fileName || 'file';
 				const fileBuffer = Buffer.from(binaryData.data, 'base64');
 
-				// Step 1: Create upload session
+				// Step 1: Create upload session for the file
 				const uploadSession = await microsoftApiRequest.call(
 					this,
 					'POST',
-					`/v1.0/chats/${chatId}/messages`,
+					`/v1.0/chats/${chatId}/messages/${fileName}/attachments/createUploadSession`,
 					{
-						body: {
-							content: message || fileName,
+						AttachmentItem: {
+							attachmentType: 'file',
+							name: fileName,
+							size: fileBuffer.length,
 						},
-						attachments: [
-							{
-								contentType: 'reference',
-								contentUrl: null,
-								name: fileName,
-							},
-						],
 					},
 				);
+
+				if (!uploadSession || !uploadSession.uploadUrl) {
+					throw new Error('Failed to create upload session');
+				}
 
 				// Step 2: Upload the file using direct PUT request since it's binary data
 				const uploadResponse = await this.helpers.requestOAuth2.call(
@@ -158,15 +157,35 @@ export class TeamsFileUpload implements INodeType {
 						headers: {
 							'Content-Length': fileBuffer.length,
 						},
-							body: fileBuffer,
-						json: false, // Important: don't parse binary data as JSON
+						body: fileBuffer,
+						json: false,
+					},
+				);
+
+				// Step 3: Send the message with the file reference
+				const messageResponse = await microsoftApiRequest.call(
+					this,
+					'POST',
+					`/v1.0/chats/${chatId}/messages`,
+					{
+						body: {
+							content: message || fileName,
+						},
+						attachments: [
+							{
+								id: uploadSession.id,
+								contentType: 'reference',
+								contentUrl: uploadResponse.resourceUrl,
+								name: fileName,
+							},
+						],
 					},
 				);
 
 				returnData.push({
 					json: {
 						success: true,
-						messageId: uploadSession.id,
+						messageId: messageResponse.id,
 						fileName,
 						uploadResponse,
 					},
