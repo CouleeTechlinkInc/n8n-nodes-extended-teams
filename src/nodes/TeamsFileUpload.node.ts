@@ -6,9 +6,6 @@ import {
 	NodeOperationError,
 	NodeConnectionType,
 } from 'n8n-workflow';
-import { basename } from 'path';
-import { createReadStream } from 'fs';
-import { stat } from 'fs/promises';
 
 export class TeamsFileUpload implements INodeType {
 	description: INodeTypeDescription = {
@@ -21,47 +18,52 @@ export class TeamsFileUpload implements INodeType {
 		group: ['transform'],
 		version: 1,
 		description: 'Upload files to Microsoft Teams chat messages',
-			defaults: {
-				name: 'Teams File Upload',
+		defaults: {
+			name: 'Teams File Upload',
+		},
+		inputs: ['main'] as NodeConnectionType[],
+		outputs: ['main'] as NodeConnectionType[],
+		credentials: [
+			{
+				name: 'microsoftTeamsOAuth2Api',
+				required: true,
 			},
-			inputs: ['main'] as NodeConnectionType[],
-			outputs: ['main'] as NodeConnectionType[],
-			credentials: [
-				{
-					name: 'microsoftTeamsOAuth2Api',
-					required: true,
-				},
-			],
-			properties: [
-				{
-					displayName: 'Chat ID',
-					name: 'chatId',
-					type: 'string',
-					default: '',
-					required: true,
-					description: 'The ID of the chat to upload the file to',
-				},
-				{
-					displayName: 'Binary Property',
-					name: 'binaryPropertyName',
-					type: 'string',
-					default: 'data',
-					required: true,
-					description: 'Name of the binary property that contains the file data',
-				},
-				{
-					displayName: 'Message',
-					name: 'message',
-					type: 'string',
-					default: '',
-					description: 'Optional message to send with the file',
-				},
-			],
-		};
+		],
+		properties: [
+			{
+				displayName: 'Chat ID',
+				name: 'chatId',
+				type: 'string',
+				default: '',
+				required: true,
+				description: 'The ID of the chat to upload the file to',
+			},
+			{
+				displayName: 'Binary Property',
+				name: 'binaryPropertyName',
+				type: 'string',
+				default: 'data',
+				required: true,
+				description: 'Name of the binary property that contains the file data',
+			},
+			{
+				displayName: 'Message',
+				name: 'message',
+				type: 'string',
+				default: '',
+				description: 'Optional message to send with the file',
+			},
+		],
+	};
 
 	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
 		const items = this.getInputData();
 		const returnData: INodeExecutionData[] = [];
+
+		// Get credentials for this execution
+		const credentials = await this.getCredentials('microsoftTeamsOAuth2Api') as {
+			access_token: string;
+		};
 
 		for (let i = 0; i < items.length; i++) {
 			const chatId = this.getNodeParameter('chatId', i) as string;
@@ -83,6 +85,7 @@ export class TeamsFileUpload implements INodeType {
 					method: 'POST',
 					url: `https://graph.microsoft.com/v1.0/chats/${chatId}/messages`,
 					headers: {
+						'Authorization': `Bearer ${credentials.access_token}`,
 						'Content-Type': 'application/json',
 					},
 					body: {
@@ -105,6 +108,7 @@ export class TeamsFileUpload implements INodeType {
 					method: 'PUT',
 					url: uploadSession.uploadUrl,
 					headers: {
+						'Authorization': `Bearer ${credentials.access_token}`,
 						'Content-Length': fileBuffer.length,
 					},
 					body: fileBuffer,
