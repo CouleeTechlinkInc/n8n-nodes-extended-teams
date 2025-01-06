@@ -129,61 +129,24 @@ export class TeamsFileUpload implements INodeType {
 				const fileName = binaryData.fileName || 'file';
 				const fileBuffer = Buffer.from(binaryData.data, 'base64');
 
-				// Step 1: Create upload session for the file
+				// Create upload session
 				const uploadSession = await microsoftApiRequest.call(
 					this,
 					'POST',
 					`/v1.0/chats/${chatId}/messages`,
 					{
 						body: {
-							content: message || fileName,
+							content: message || `Uploading file: ${fileName}`,
 						},
-					},
-				);
-
-				// Step 2: Create upload session for the file
-				const attachmentSession = await microsoftApiRequest.call(
-					this,
-					'POST',
-					`/v1.0/chats/${chatId}/attachments/createUploadSession`,
-					{
-						AttachmentItem: {
-							attachmentType: 'file',
-							name: fileName,
-							size: fileBuffer.length,
-						},
-					},
-				);
-
-				if (!attachmentSession || !attachmentSession.uploadUrl) {
-					throw new Error('Failed to create upload session');
-				}
-
-				// Step 3: Upload the file using direct PUT request
-				const uploadResponse = await this.helpers.requestOAuth2.call(
-					this,
-					'microsoftTeamsOAuth2Api',
-					{
-						method: 'PUT',
-						uri: attachmentSession.uploadUrl,
-						headers: {
-							'Content-Length': fileBuffer.length,
-						},
-						body: fileBuffer,
-						json: false,
-					},
-				);
-
-				// Step 4: Add the uploaded file as an attachment to the message
-				await microsoftApiRequest.call(
-					this,
-					'POST',
-					`/v1.0/chats/${chatId}/messages/${uploadSession.id}/attachments`,
-					{
-						id: attachmentSession.id,
-						contentType: binaryData.mimeType || 'application/octet-stream',
-						contentUrl: uploadResponse.resourceUrl,
-						name: fileName,
+						attachments: [
+							{
+								id: new Date().getTime().toString(),
+								contentType: binaryData.mimeType || 'application/octet-stream',
+								contentUrl: '',
+								name: fileName,
+								content: binaryData.data,
+							},
+						],
 					},
 				);
 
@@ -192,7 +155,6 @@ export class TeamsFileUpload implements INodeType {
 						success: true,
 						messageId: uploadSession.id,
 						fileName,
-						uploadResponse,
 					},
 				});
 			} catch (error: any) {
