@@ -5,7 +5,61 @@ import {
 	INodeTypeDescription,
 	NodeOperationError,
 	NodeConnectionType,
+	IHttpRequestMethods,
+	IRequestOptions,
+	JsonObject,
+	IDataObject,
 } from 'n8n-workflow';
+import { NodeApiError } from 'n8n-workflow';
+
+interface MicrosoftError {
+	error?: {
+		error?: {
+			message?: string;
+			code?: string;
+		};
+	};
+	statusCode?: number;
+}
+
+async function microsoftApiRequest(
+	this: IExecuteFunctions,
+	method: IHttpRequestMethods,
+	resource: string,
+	body: any = {},
+	qs: IDataObject = {},
+	uri?: string,
+	headers: IDataObject = {},
+): Promise<any> {
+	const options: IRequestOptions = {
+		headers: {
+			'Content-Type': 'application/json',
+		},
+		method,
+		body,
+		qs,
+		uri: uri || `https://graph.microsoft.com${resource}`,
+		json: true,
+	};
+	try {
+		if (Object.keys(headers).length !== 0) {
+			options.headers = Object.assign({}, options.headers, headers);
+		}
+		return await this.helpers.requestOAuth2.call(this, 'microsoftTeamsOAuth2Api', options);
+	} catch (error) {
+		const microsoftError = error as MicrosoftError;
+		const errorOptions: IDataObject = {};
+		
+		if (microsoftError.error?.error) {
+			const httpCode = microsoftError.statusCode;
+			const errorDetails = microsoftError.error.error;
+			errorOptions.message = errorDetails.message;
+			errorOptions.description = `Error ${errorDetails.code}: ${errorDetails.message}`;
+		}
+		
+		throw new NodeApiError(this.getNode(), microsoftError as JsonObject, errorOptions);
+	}
+}
 
 export class TeamsFileUpload implements INodeType {
 	description: INodeTypeDescription = {
@@ -60,11 +114,6 @@ export class TeamsFileUpload implements INodeType {
 		const items = this.getInputData();
 		const returnData: INodeExecutionData[] = [];
 
-		// Get credentials for this execution
-		const credentials = await this.getCredentials('microsoftTeamsOAuth2Api') as {
-			access_token: string;
-		};
-
 		for (let i = 0; i < items.length; i++) {
 			const chatId = this.getNodeParameter('chatId', i) as string;
 			const binaryPropertyName = this.getNodeParameter('binaryPropertyName', i) as string;
@@ -81,14 +130,11 @@ export class TeamsFileUpload implements INodeType {
 				const fileBuffer = Buffer.from(binaryData.data, 'base64');
 
 				// Step 1: Create upload session
-				const uploadSession = await this.helpers.request({
-					method: 'POST',
-					url: `https://graph.microsoft.com/v1.0/chats/${chatId}/messages`,
-					headers: {
-						'Authorization': `Bearer ${credentials.access_token}`,
-						'Content-Type': 'application/json',
-					},
-					body: {
+				const uploadSession = await microsoftApiRequest.call(
+					this,
+					'POST',
+					`/v1.0/chats/${chatId}/messages`,
+					{
 						body: {
 							content: message || fileName,
 						},
@@ -100,19 +146,22 @@ export class TeamsFileUpload implements INodeType {
 							},
 						],
 					},
-					json: true,
-				});
+				);
 
-				// Step 2: Upload the file
-				const uploadResponse = await this.helpers.request({
-					method: 'PUT',
-					url: uploadSession.uploadUrl,
-					headers: {
-						'Authorization': `Bearer ${credentials.access_token}`,
-						'Content-Length': fileBuffer.length,
+				// Step 2: Upload the file using direct PUT request since it's binary data
+				const uploadResponse = await this.helpers.requestOAuth2.call(
+					this,
+					'microsoftTeamsOAuth2Api',
+					{
+						method: 'PUT',
+						uri: uploadSession.uploadUrl,
+						headers: {
+							'Content-Length': fileBuffer.length,
+						},
+							body: fileBuffer,
+						json: false, // Important: don't parse binary data as JSON
 					},
-					body: fileBuffer,
-				});
+				);
 
 				returnData.push({
 					json: {
@@ -132,7 +181,7 @@ export class TeamsFileUpload implements INodeType {
 					});
 					continue;
 				}
-				throw new NodeOperationError(this.getNode(), error.message || 'An error occurred while uploading the file');
+				throw new NodeApiError(this.getNode(), error as JsonObject);
 			}
 		}
 
