@@ -11,6 +11,7 @@ import {
 	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
+	NodeConnectionType,
 } from 'n8n-workflow';
 
 export class YourNode implements INodeType {
@@ -24,8 +25,8 @@ export class YourNode implements INodeType {
 		defaults: {
 			name: 'Your Node',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		inputs: ['main'] as NodeConnectionType[],
+		outputs: ['main'] as NodeConnectionType[],
 		credentials: [
 			{
 				name: 'yourCredentialsName',
@@ -63,56 +64,74 @@ export class YourNode implements INodeType {
 }
 ```
 
-### 2. Credentials Structure
-Create a new file `src/credentials/YourCredentials.credentials.ts`:
+### 2. Node Export Structure
+Create `src/nodes/index.ts` to properly export your nodes:
 ```typescript
-import {
-	IAuthenticateGeneric,
-	ICredentialType,
-	INodeProperties,
-} from 'n8n-workflow';
-
-export class YourCredentials implements ICredentialType {
-	name = 'yourCredentialsName';
-	displayName = 'Your Credentials';
-	documentationUrl = 'your/documentation/url';
-	properties: INodeProperties[] = [
-		{
-			displayName: 'API Key',
-			name: 'apiKey',
-			type: 'string',
-			typeOptions: {
-				password: true,
-			},
-			default: '',
-		},
-		// Add more credential properties as needed
-	];
-
-	authenticate: IAuthenticateGeneric = {
-		type: 'generic',
-		properties: {
-			headers: {
-				'Authorization': '={{"Bearer " + $credentials.apiKey}}',
-			},
-		},
-	};
-}
-```
-
-### 3. Register Node and Credentials
-Update `src/nodes/index.ts`:
-```typescript
+import type { INodeType } from 'n8n-workflow';
 import { YourNode } from './YourNode.node';
 
+// Export as array for n8n to discover
+export const nodes: INodeType[] = [
+	new YourNode(),
+];
+
+// Also export the class for reuse
 export { YourNode };
 ```
 
-Update `src/credentials/index.ts`:
+### 3. Main Export File
+Create `src/index.ts` in your project root:
 ```typescript
-import { YourCredentials } from './YourCredentials.credentials';
+import { nodes } from './nodes';
 
-export { YourCredentials };
+export { nodes };
+```
+
+### 4. Package Configuration
+Update your `package.json`:
+```json
+{
+  "name": "your-package-name",
+  "version": "1.0.0",
+  "description": "Your package description",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "files": [
+    "dist"
+  ],
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "nodes": [
+      "dist/nodes/YourNode.node.js"
+    ]
+  }
+}
+```
+
+### 5. TypeScript Configuration
+Create `tsconfig.json`:
+```json
+{
+  "compilerOptions": {
+    "strict": true,
+    "module": "commonjs",
+    "target": "es2019",
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "types": ["node"],
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "moduleResolution": "node",
+    "sourceMap": true,
+    "declaration": true,
+    "removeComments": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules/**/*", "dist/**/*"]
+}
 ```
 
 ## Testing Your Node
@@ -129,7 +148,7 @@ npm link
 cd /path/to/n8n
 
 # Link your node package
-npm link n8n-nodes-<your-package-name>
+npm link your-package-name
 
 # Restart n8n
 n8n start
@@ -168,15 +187,41 @@ Create `.vscode/launch.json`:
 }
 ```
 
-### 2. Adding Debug Logs
-```typescript
-import { LoggerProxy as Logger } from 'n8n-workflow';
+### 2. Common Issues and Solutions
 
-// In your node's execute function
-Logger.debug('Debug message');
-Logger.info('Info message');
-Logger.warn('Warning message');
-Logger.error('Error message');
+#### Node Not Loading in n8n
+If you see "Unexpected token '*'" error or nodes not loading:
+1. Ensure your package.json `n8n.nodes` paths are specific:
+```json
+"n8n": {
+  "nodes": [
+    "dist/nodes/YourNode.node.js"
+  ]
+}
+```
+2. Verify your node exports follow the correct pattern in src/nodes/index.ts:
+```typescript
+export const nodes: INodeType[] = [
+  new YourNode(),
+];
+```
+3. Check that main index.ts exports nodes correctly:
+```typescript
+export { nodes };
+```
+
+#### Build Issues
+- Ensure rootDir in tsconfig.json points to src:
+```json
+{
+  "compilerOptions": {
+    "rootDir": "./src"
+  }
+}
+```
+- Clean dist directory before rebuilding:
+```bash
+rm -rf dist && npm run build
 ```
 
 ## Publishing
@@ -246,23 +291,6 @@ Create comprehensive documentation in your README.md:
 - Usage examples
 - Troubleshooting guide
 - API references
-
-## Common Issues and Solutions
-
-### 1. Node Not Appearing in n8n
-- Check package.json n8n configuration
-- Verify node registration in index.ts
-- Ensure proper build and link
-
-### 2. Credential Issues
-- Verify credential properties
-- Check authentication implementation
-- Test with different authentication methods
-
-### 3. Build Issues
-- Clear node_modules and rebuild
-- Check TypeScript configuration
-- Verify dependency versions
 
 ## Resources
 - [n8n Node Development Documentation](https://docs.n8n.io/integrations/creating-nodes/)
