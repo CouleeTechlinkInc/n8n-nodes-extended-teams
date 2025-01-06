@@ -128,6 +128,7 @@ export class TeamsFileUpload implements INodeType {
 
 				const fileName = binaryData.fileName || 'file';
 				const fileBuffer = Buffer.from(binaryData.data, 'base64');
+				const attachmentId = new Date().getTime().toString();
 
 				// Create upload session
 				const uploadSession = await microsoftApiRequest.call(
@@ -136,11 +137,11 @@ export class TeamsFileUpload implements INodeType {
 					`/v1.0/chats/${chatId}/messages`,
 					{
 						body: {
-							content: message || `Uploading file: ${fileName}`,
+							content: `${message ? message + '\n\n' : ''}<attachment id="${attachmentId}"></attachment>`,
 						},
 						attachments: [
 							{
-								id: new Date().getTime().toString(),
+								id: attachmentId,
 								contentType: binaryData.mimeType || 'application/octet-stream',
 								contentUrl: '',
 								name: fileName,
