@@ -129,23 +129,11 @@ export class TeamsFileUpload implements INodeType {
 				const fileName = binaryData.fileName || 'file';
 				const fileBuffer = Buffer.from(binaryData.data, 'base64');
 
-				// Step 1: Create upload session
-				const uploadSession = await microsoftApiRequest.call(
-					this,
-					'POST',
-					`/v1.0/chats/${chatId}/messages`,
-					{
-						body: {
-							content: message || `Uploading file: ${fileName}`,
-						},
-					},
-				);
-
-				// Step 2: Create upload session for the file
+				// Step 1: Create upload session for the file
 				const fileUploadSession = await microsoftApiRequest.call(
 					this,
 					'POST',
-					`/v1.0/chats/${chatId}/messages/${uploadSession.id}/attachments/createUploadSession`,
+					`/v1.0/chats/${chatId}/attachments/createUploadSession`,
 					{
 						AttachmentItem: {
 							attachmentType: 'file',
@@ -159,7 +147,7 @@ export class TeamsFileUpload implements INodeType {
 					throw new Error('Failed to create upload session');
 				}
 
-				// Step 3: Upload the file content
+				// Step 2: Upload the file content
 				await this.helpers.requestOAuth2.call(
 					this,
 					'microsoftTeamsOAuth2Api',
@@ -175,21 +163,41 @@ export class TeamsFileUpload implements INodeType {
 					},
 				);
 
+				// Step 3: Create message with the uploaded file
+				const messageResponse = await microsoftApiRequest.call(
+					this,
+					'POST',
+					`/v1.0/chats/${chatId}/messages`,
+					{
+						body: {
+							content: message || `File uploaded: ${fileName}`,
+						},
+						attachments: [
+							{
+								id: fileUploadSession.id,
+								contentType: binaryData.mimeType || 'application/octet-stream',
+								name: fileName,
+							},
+						],
+					},
+				);
+
 				returnData.push({
 					json: {
 						success: true,
-						messageId: uploadSession.id,
+						messageId: messageResponse.id,
 						fileName,
+						attachmentId: fileUploadSession.id,
 					},
 				});
 			} catch (error: any) {
 				if (this.continueOnFail()) {
 					returnData.push({
-						json: {
-							success: false,
-							error: error.message || 'An error occurred while uploading the file',
-						},
-					});
+							json: {
+								success: false,
+								error: error.message || 'An error occurred while uploading the file',
+							},
+						});
 					continue;
 				}
 				throw new NodeApiError(this.getNode(), error as JsonObject);
