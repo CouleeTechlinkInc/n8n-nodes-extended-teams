@@ -141,11 +141,11 @@ export class TeamsFileUpload implements INodeType {
 					},
 				);
 
-				// Step 2: Create upload session for attachment
+				// Step 2: Create upload session for the file
 				const attachmentSession = await microsoftApiRequest.call(
 					this,
 					'POST',
-					`/v1.0/chats/${chatId}/messages/${uploadSession.id}/attachments/createUploadSession`,
+					`/v1.0/chats/${chatId}/attachments/createUploadSession`,
 					{
 						AttachmentItem: {
 							attachmentType: 'file',
@@ -170,7 +170,20 @@ export class TeamsFileUpload implements INodeType {
 							'Content-Length': fileBuffer.length,
 						},
 						body: fileBuffer,
-							json: false,
+						json: false,
+					},
+				);
+
+				// Step 4: Add the uploaded file as an attachment to the message
+				await microsoftApiRequest.call(
+					this,
+					'POST',
+					`/v1.0/chats/${chatId}/messages/${uploadSession.id}/attachments`,
+					{
+						id: attachmentSession.id,
+						contentType: binaryData.mimeType || 'application/octet-stream',
+						contentUrl: uploadResponse.resourceUrl,
+						name: fileName,
 					},
 				);
 
